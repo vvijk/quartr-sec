@@ -18,3 +18,20 @@ main {
   margin: 0 auto;
   padding: 2rem 1rem;
 }
+
+form { margin: 2rem 0; }
+label { display: block; font-weight: 600; margin-bottom: 0.5rem; }
+.search-controls { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+input, button { font: inherit; padding: 0.65rem 0.9rem; border-radius: 6px; }
+input { border: 1px solid #8993a2; width: min(100%, 320px); }
+button { border: 1px solid #234e9b; background: #234e9b; color: white; cursor: pointer; }
+button:disabled { opacity: 0.65; cursor: wait; }
+:focus-visible { outline: 3px solid #3377d4; outline-offset: 3px; }
+a { color: #174b9e; }
+.error { color: #9b2020; background: #fff0f0; padding: 1rem; border-radius: 6px; }
+.scope-note { color: #515c6c; }
+.table-container { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; background: white; }
+th, td { padding: 0.8rem 1rem; text-align: left; border-bottom: 1px solid #dce1e8; white-space: nowrap; }
+th { background: #e9edf3; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

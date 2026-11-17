@@ -2,11 +2,30 @@ const TICKERS_URL = "https://www.sec.gov/files/company_tickers.json";
 
 export class SecError extends Error {
   constructor(
-    public readonly code: "INVALID_TICKER" | "UNKNOWN_TICKER" | "SEC_CONFIG" | "SEC_UPSTREAM",
+    public readonly code: "INVALID_TICKER" | "INVALID_CIK" | "UNKNOWN_TICKER" | "SEC_CONFIG" | "SEC_UPSTREAM",
     message: string,
   ) {
     super(message);
     this.name = "SecError";
+  }
+}
+
+export async function fetchSecJson(url: string, userAgent: string | undefined, fetcher = fetch): Promise<unknown> {
+  if (!userAgent?.trim()) {
+    throw new SecError("SEC_CONFIG", "Set SEC_USER_AGENT to your application name and contact email.");
+  }
+  try {
+    const response = await fetcher(url, {
+      headers: { "User-Agent": userAgent, Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) {
+      throw new SecError("SEC_UPSTREAM", `SEC request failed (HTTP ${response.status}).`);
+    }
+    return await response.json();
+  } catch (error) {
+    if (error instanceof SecError) throw error;
+    throw new SecError("SEC_UPSTREAM", "Could not load SEC data. Please try again.");
   }
 }
 
@@ -39,27 +58,14 @@ export function createTickerResolver(userAgent: string | undefined, fetcher = fe
   let tickerMap: Promise<Map<string, string>> | undefined;
 
   async function loadTickers(): Promise<Map<string, string>> {
-    if (!userAgent?.trim()) {
-      throw new SecError("SEC_CONFIG", "Set SEC_USER_AGENT to your application name and contact email.");
-    }
-    try {
-      const response = await fetcher(TICKERS_URL, {
-        headers: { "User-Agent": userAgent, Accept: "application/json" },
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!response.ok) {
-        throw new SecError("SEC_UPSTREAM", `SEC ticker request failed (HTTP ${response.status}).`);
-      }
-      return parseTickers(await response.json());
-    } catch (error) {
-      if (error instanceof SecError) throw error;
-      throw new SecError("SEC_UPSTREAM", "Could not load the SEC ticker map. Please try again.");
-    }
+    return parseTickers(await fetchSecJson(TICKERS_URL, userAgent, fetcher));
   }
 
   return async function resolveCik(ticker: string): Promise<string> {
     const normalized = ticker.trim().toUpperCase();
-    if (!normalized || normalized.length > 32 || !/^[A-Z0-9]+(?:[.-][A-Z0-9]+)*$/.test(normalized)) {
+    const allowedCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-";
+    const hasInvalidCharacter = Array.from(normalized).some((character) => !allowedCharacters.includes(character));
+    if (!normalized || normalized.length > 32 || hasInvalidCharacter) {
       throw new SecError("INVALID_TICKER", "Enter a valid company ticker.");
     }
 

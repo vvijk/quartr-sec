@@ -71,4 +71,37 @@ To smoke-test against SEC after configuring `.env`:
 bun -e 'import { resolveCik } from "./server/sec"; console.log(await resolveCik("AAPL"));'
 ```
 
-Tests use fixture responses, not live SEC requests. Filing retrieval, summary calculations, and their UI are not implemented yet.
+Tests use fixture responses, not live SEC requests.
+
+## Submission fetching and transformation
+
+`fetchCompanyFilings(cik)` in `server/filings.ts` accepts the resolved 10-digit CIK, fetches the main submissions JSON, and returns company metadata plus standardized filings. `transformFilings(columns, cik)` is the pure transformation function. Shared response types live in `shared/types.ts`.
+
+```ts
+const cik = await resolveCik("AAPL");
+const company = await fetchCompanyFilings(cik);
+// { cik, name, historyScope: "recent", filings: [...] }
+// Each filing: { accessionNumber, form, filingDate, documentUrl }
+```
+
+Only `filings.recent` is loaded. Historical files in `filings.files` are not fetched. Future pagination totals must describe the loaded records, not the company's complete history. An absent recent 10-K does not prove no historical 10-K exists.
+
+The transformation validates the required parallel arrays and maps values at the same index into a filing. It preserves all forms and SEC ordering. Missing primary document filenames fall back to the complete submission `.txt` URL. Invalid columns or records raise SEC_UPSTREAM instead of producing partial results.
+
+Submission requests reuse the ticker request headers, 10-second timeout, and error handling. Submissions are not cached in this step. Filtering, sorting, pagination, and summary calculations remain unimplemented.
+
+## Filing browser
+
+Open http://localhost:5173 with both development servers running, enter a ticker such as AAPL, and click Search. The page shows company metadata and a table of forms, filing dates, accession numbers, and links to SEC documents. It includes initial, loading, error, and empty states. Only recent history is shown; this incremental version returns every loaded filing without pagination.
+
+`GET /companies/:ticker/filings` returns the existing CompanyFilings response. The frontend calls it through Vite at `/api/companies/:ticker/filings`. Invalid tickers return 400, unknown tickers 404, SEC failures 502, and server/configuration errors 500, with a JSON `error` message.
+
+Routes live in server/app.ts; server/index.ts starts the listener. The app factory accepts a filing loader so HTTP response tests do not need SEC access. Browser verification was blocked by declined localhost permission; 16 automated tests, type checking, and the production build passed.
+
+Live check:
+
+```sh
+bun -e 'import { resolveCik } from "./server/sec"; import { fetchCompanyFilings } from "./server/filings"; const result = await fetchCompanyFilings(await resolveCik("AAPL")); console.log(result.name, result.filings.length, result.filings[0]);'
+```
+
+The agent's live check failed while loading SEC data; fixture tests, type checking, and production build passed.

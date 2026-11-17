@@ -261,3 +261,131 @@ bun -e 'import { resolveCik } from "./server/sec"; console.log(await resolveCik(
 ```
 
 Live SEC access remains unverified. The next step is fetching submissions using the resolved CIK.
+
+
+## 15. User — submission fetching and transformation
+
+Continue by implementing the fetching and transformation of the SEC filings. Use the resolved CIK to fetch company's submisson from the api. Transform filings from its columnar format inta an array of standardized filing objects, as specified in the pdf. Dont implement filtering, pagination or API routes yet. Once done explain the implementation and any decisions you made and why
+
+## 16. Assistant — progress
+
+I’ll add submission fetching and columnar-to-object transformation using the existing CIK resolver. I’ll keep filtering, pagination, and API routes out of this step, and make the history coverage explicit.
+
+## 17. Assistant — progress
+
+For this step, I’ll transform `filings.recent` from the company’s main submissions response and label the result as recent history. Older-history fetching is still an open scope decision.
+
+Each filing will contain its accession number, form, filing date, and SEC document URL. I’ll validate that the columns align, preserve SEC’s ordering, and use the complete submission text as a fallback when the primary document filename is empty.
+
+## 18. Assistant — progress
+
+The fetching and transformation code passes all 14 tests, type checking, and the production build. The live end-to-end check failed while loading SEC data, so live behavior remains unverified.
+
+Malformed or mismatched columns raise an error rather than silently dropping filings. Valid results retain every row and SEC’s original order.
+
+## Submission implementation tool activity
+
+- Read current SEC implementation, tests, notes, and Git status.
+- Consulted official SEC submissions documentation; the web tool could not retrieve Apple's submissions JSON.
+- Added server/filings.ts, shared/types.ts, and server/filings.test.ts. Extracted shared HTTP handling in server/sec.ts.
+- First test run passed all 14 tests; type checking caught possibly undefined fixture array elements in expected test data. Replaced them with explicit expected accession strings.
+- Final bun test: 14 passed, 0 failed, 49 assertions. Type checking and Vite build passed.
+- Live end-to-end AAPL check failed with SEC_UPSTREAM: Could not load SEC data. Please try again. No live verification claimed.
+- Updated README and NOTES. No filtering, pagination, sorting, or API routes added.
+
+## 19. Assistant — result
+
+Implemented in [server/filings.ts](sandbox:/Users/bw/programming/quartr/server/filings.ts), with types in [shared/types.ts](sandbox:/Users/bw/programming/quartr/shared/types.ts).
+
+```ts
+const cik = await resolveCik("AAPL");
+const company = await fetchCompanyFilings(cik);
+```
+
+**How it works:**
+
+1. Fetches `https://data.sec.gov/submissions/CIK{cik}.json`.
+2. Validates the company response and required filing columns.
+3. Combines values at each array index into `{ accessionNumber, form, filingDate, documentUrl }`.
+4. Returns `{ cik, name, historyScope: "recent", filings }`.
+
+**Decisions and reasons:**
+
+- **Recent history only for this step.** Older files are not downloaded. The explicit scope prevents callers from treating this as complete history.
+- **Fail on malformed columns.** Mismatched lengths or invalid values could otherwise produce incorrect filings or misleading totals.
+- **Preserve dates, forms, and ordering.** Dates remain `YYYY-MM-DD` strings; no filtering, pagination, sorting, or routes were added.
+- **Build SEC document links.** URLs use the unpadded CIK and accession without hyphens. An empty primary filename falls back to the complete submission text.
+- **Reuse request handling.** Ticker and submission requests share User-Agent headers, a 10-second timeout, and consistent errors. Submission caching is deferred.
+
+**Validation:** all 14 tests, type checking, and production build pass. The live SEC check failed while loading data, so live behavior remains unverified. The prompt log is updated.
+
+## 20. User — simplify validation
+
+Refactor the validation and make it simpler and easier to read. Avoid regex, keep basic checks for missing or malformed data, keep transformation logic easy to follow. Dont introduce additional abstractions or helper functions unless they are really usefull
+
+## 21. Assistant — progress
+
+I’ll simplify the validation, remove regex checks, and keep the transformation focused on mapping columns into filings. I’ll retain checks for missing fields and mismatched columns, then run the tests and update the prompt log.
+
+## Refactor tool activity
+
+- Read current files and preserved existing uncommitted changes.
+- Replaced regex validation in server/filings.ts and server/sec.ts with plain character checks.
+- Removed non-null assertions from transformation; explicit guards narrow the types.
+- Relaxed accession validation to digits after removing hyphens, rather than exact group lengths. Ticker validation checks allowed characters without enforcing separator placement; lookup still rejects unknown tickers.
+- Added one small isValidFilingDate helper to keep date parsing and calendar validity checks out of the mapping body.
+- Extended existing malformed-data tests. Final verification: 14 tests pass, 54 assertions; TypeScript checking passes.
+
+## 22. User — repeated request during refactor
+
+Refactor the validation and make it simpler and easier to read. Avoid regex, keep basic checks for missing or malformed data, keep transformation logic easy to follow. Dont introduce additional abstractions or helper functions unless they are really usefull
+
+## 23. Assistant — result
+
+Refactored validation in server/filings.ts and server/sec.ts:
+
+- Removed regex and non-null assertions.
+- Replaced the combined validation condition with readable, specific checks.
+- Kept checks for missing fields, mismatched columns, invalid dates, and malformed identifiers.
+- Relaxed exact accession formatting checks.
+- Added only one small date helper to keep the transformation readable.
+
+All 14 tests and TypeScript checking pass. Updated the prompt log.
+
+## 24. User — minimal filing browser
+
+Implement a minimal frontend so i can inspect the filings. First expose the existing filing functionality through "GET /companies/:ticker/filings" using Elysia. Reuse the already created ticker to cik and fetchCompanyFilings logic. Then build a simple React UI with: Input field fo company ticker. a search button. a table showing the form type, filing date and accession number. a clickable link to original sec document. And basic loading, error and empty states ofc
+
+## 25. Assistant — progress
+
+I’ll connect the existing lookup and filing fetcher to the Elysia route, then add a ticker search form and filings table with loading, error, and empty states.
+
+## 26. Assistant — progress
+
+The route and UI are implemented, and all 16 tests plus the production build pass. Known backend errors return JSON messages for the UI to display. Search is disabled while a request is running to prevent overlapping requests.
+
+I’ll now check the page in the browser.
+
+## 27. Assistant — progress
+
+Browser access to localhost was declined, so I couldn’t visually verify the page. The code, route tests, type checking, and build are complete; I’m recording that verification limit in the notes.
+
+## Filing browser tool activity
+
+- Added server/app.ts with the filing endpoint and JSON error/status mapping; server/index.ts starts the app.
+- Reused resolveCik and fetchCompanyFilings without changing their implementations.
+- Added React search form, filing table, document links, and initial/loading/error/empty states with plain CSS.
+- Added route tests with an injected filing loader. All 16 tests passed (65 assertions); TypeScript checks and production build passed.
+- Attempted browser navigation to localhost:5173; permission was declined. No workaround attempted.
+- Updated README, NOTES, and prompt log. No filtering, sorting, pagination, or summary added.
+
+## 28. Assistant — result
+
+Implemented the filing browser and `GET /companies/:ticker/filings`, reusing the existing SEC functions.
+
+The UI includes ticker search, a filings table, SEC document links, and loading, error, and empty states. It labels the results as recent history.
+
+With both dev servers running, open http://localhost:5173 and search for `AAPL`.
+
+**Verified:** 16 tests, type checking, and production build pass. Browser verification was blocked because localhost access was declined. Prompt log updated.
+
