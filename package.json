@@ -1,0 +1,28 @@
+{
+  "name": "quartr-filings",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.4",
+  "scripts": {
+    "test": "bun test",
+    "dev": "vite",
+    "dev:server": "bun --watch server/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
+    "build": "bun run typecheck && vite build",
+    "preview": "vite preview",
+    "start:server": "bun server/index.ts"
+  },
+  "dependencies": {
+    "elysia": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}
