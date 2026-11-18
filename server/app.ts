@@ -1,7 +1,8 @@
 import { Elysia } from "elysia";
 import { fetchCompanyFilings } from "./filings";
 import { resolveCik, SecError } from "./sec";
-import type { PaginatedCompanyFilings } from "../shared/types";
+import type { FilingsSummary, PaginatedCompanyFilings } from "../shared/types";
+import { summaryWindow, summarizeFilings } from "./summary";
 
 // Accept a loader so route tests can run without contacting SEC.
 export function createApp(
@@ -9,6 +10,33 @@ export function createApp(
 ) {
   return new Elysia()
     .get("/health", () => ({ status: "ok" }))
+    .get("/filings/summary", async ({ query, set }) => {
+      const tickers = [...new Set((query.tickers ?? "").split(",").map((ticker) => ticker.trim().toUpperCase()))];
+      if (tickers.some((ticker) => !ticker) || tickers.length > 10) {
+        set.status = 400;
+        return { error: "Provide 1-10 comma-separated tickers, without empty entries." };
+      }
+
+      const { from, to } = summaryWindow();
+      const result: FilingsSummary = { from, to, historyScope: "recent", companies: [], errors: [] };
+
+      // Process sequentially to avoid sending a burst of company requests.
+      for (const ticker of tickers) {
+        try {
+          const company = await loadFilings(ticker);
+          result.companies.push({
+            ticker, cik: company.cik, name: company.name,
+            ...summarizeFilings(company.filings, from, to),
+          });
+        } catch (error) {
+          result.errors.push({
+            ticker,
+            message: error instanceof SecError ? error.message : "Could not load company filings. Please try again.",
+          });
+        }
+      }
+      return result;
+    })
     .get("/companies/:ticker/filings", async ({ params, query, set }) => {
       const form = query.form?.trim().toUpperCase();
       const sort = query.sort ?? "DESC";

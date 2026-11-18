@@ -88,7 +88,7 @@ Only `filings.recent` is loaded. Historical files in `filings.files` are not fet
 
 The transformation validates the required parallel arrays and maps values at the same index into a filing. It preserves all forms and SEC ordering. Missing primary document filenames fall back to the complete submission `.txt` URL. Invalid columns or records raise SEC_UPSTREAM instead of producing partial results.
 
-Submission requests reuse the ticker request headers, 10-second timeout, and error handling. Submissions are not cached in this step. Filtering, sorting, and pagination are implemented in the route; summary calculations remain unimplemented.
+Submission requests reuse the ticker request headers, 10-second timeout, and error handling. Submissions are not cached in this step. Filtering, sorting, and pagination are implemented in the route; the summary endpoint is also implemented (see below).
 
 ## Filing browser
 
@@ -116,3 +116,17 @@ Example: `GET /companies/AAPL/filings?form=10-K&sort=DESC&page=2&limit=20`
 - `limit`: positive integer, default `20`.
 
 The route filters and sorts before slicing and does not mutate the source array. The response keeps company metadata and `filings`, adding `page`, `limit`, `total`, and `totalPages`. `total` counts matching recent filings before pagination. No matches means `totalPages: 0`; out-of-range pages return an empty array with unchanged totals. Invalid sort or pagination values return 400 before SEC fetching.
+
+## Multi-company summary
+
+`GET /filings/summary?tickers=AAPL,SPOT,JPM`
+
+Accepts 1–10 unique comma-separated tickers. Whitespace and case are normalized; duplicates are removed. Missing or empty entries and oversized sets return 400.
+
+Returns `from`, `to`, `historyScope: "recent"`, `companies`, and `errors`. Each successful company has `ticker`, `cik`, `name`, `countsByForm`, and `latest10KDate`. The period runs from the same UTC calendar date a year earlier through today, inclusive; February 29 clamps to February 28. Future-dated filings are excluded.
+
+Counts include every exact form type in that period. The latest exact 10-K is found independently across the loaded recent history, including records older than the count window. A null date means not found in loaded history, not never filed. Archives are not fetched.
+
+Companies load sequentially through the same integration as the filing route. Individual failures appear in `errors`; successful summaries remain available. Valid batches return 200 even if all companies fail. Callers must inspect `errors`. A successful empty history has empty counts and a null 10-K date. Sequential loading is not a global rate limiter.
+
+The React summary view is available below the filing browser. Enter comma-separated tickers and click Get summary. It displays the reporting period, each company’s exact form counts and latest available 10-K date, plus per-company errors without hiding successful results. Empty counts and missing 10-K dates are labeled explicitly. The component lives in client/SummaryView.tsx and keeps its input/loading/error state separate from the filing browser. Summary tests cover date/leap-year boundaries, exact form counts, latest 10-K outside the window, missing 10-K, deduplication, validation, and partial/all-company failures. All 26 tests, type checking, and production build pass; live SEC access remains unverified.

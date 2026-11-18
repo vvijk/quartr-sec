@@ -18,3 +18,17 @@ export interface PaginatedCompanyFilings extends CompanyFilings {
   total: number;
   totalPages: number;
 }
+
+export interface FilingsSummary {
+  from: string;
+  to: string;
+  historyScope: "recent";
+  companies: {
+    ticker: string;
+    cik: string;
+    name: string;
+    countsByForm: Record<string, number>;
+    latest10KDate: string | null;
+  }[];
+  errors: { ticker: string; message: string }[];
+}

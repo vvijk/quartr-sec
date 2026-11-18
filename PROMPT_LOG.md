@@ -603,3 +603,155 @@ Next calls `loadFilings(appliedQuery, company.page + 1)`; Previous subtracts one
 
 No application code was changed for this walkthrough.
 
+## 39. User — summary endpoint
+
+Now lets continue with the summary endpoint. I should be able to enter a set of companies, and return each company's number of filings per form type over the last 12 months and the date of its latest 10-k. Break it down if you need to but stay in scope and keep it simple and readable. After you are done, walk me through the code. And after you start ask questions if something is unclear
+
+## 40. Assistant — progress
+
+I’ll add `GET /filings/summary?tickers=AAPL,SPOT,JPM`, reusing the existing SEC loader. I’ll count filings over a rolling 12-month window and look for the latest exact `10-K` across the loaded recent history. If none is present, I’ll return `null` and document that older history has not been searched.
+
+## 41. Assistant — progress
+
+The summary endpoint is implemented, and all 26 tests, type checking, and the build pass. It handles duplicate tickers, date boundaries, leap day, and companies without a recent 10-K. If one company fails, the response keeps the successful summaries and lists that company’s error separately.
+
+## Summary tool activity
+
+- Inspected current route, SEC integration, types, and tests.
+- Added server/summary.ts with a calendar-window function and pure aggregation function, plus shared FilingsSummary response type.
+- Added GET /filings/summary using the existing loadFilings dependency; no changes to SEC fetching or React UI.
+- Added six tests. All 26 tests passed (121 assertions), TypeScript checks and production build passed.
+- Updated README and NOTES with batch error semantics, inclusive date boundaries, recent-history limitation, and remaining UI work.
+
+## 42. Assistant — result and walkthrough
+
+Implemented **`GET /filings/summary`**. For example:
+
+[View summary for AAPL, SPOT, and JPM](http://localhost:3000/filings/summary?tickers=AAPL,SPOT,JPM)
+
+This step adds the endpoint only; the React summary view is still to come.
+
+**1. Parse the company set — `server/app.ts`**
+
+The `tickers` parameter is split on commas, trimmed, uppercased, and deduplicated:
+
+```text
+aapl, SPOT, AAPL → ["AAPL", "SPOT"]
+```
+
+Missing/empty entries or more than 10 unique companies return 400. The limit keeps the request’s work bounded.
+
+**2. Define the period — `server/summary.ts`**
+
+`summaryWindow()` calculates today and the same calendar date one year earlier, using UTC. Both boundaries are included.
+
+For November 18, 2026, that is **November 18, 2025 through November 18, 2026**. February 29 is clamped to February 28 when necessary.
+
+The window is calculated once per request, so every company uses the same dates.
+
+**3. Reuse the existing SEC integration**
+
+For each ticker, the route calls the same `loadFilings(ticker)` used by the filing endpoint:
+
+```text
+ticker → resolveCik → fetchCompanyFilings → normalized filings
+```
+
+It uses the complete loaded array, before any list filtering or pagination.
+
+**4. Summarize in one loop**
+
+`summarizeFilings(filings, from, to)` counts each form within the period:
+
+```ts
+if (filing.filingDate >= from) {
+  counts.set(filing.form, (counts.get(filing.form) ?? 0) + 1);
+}
+```
+
+Future-dated filings are skipped first. Exact form names stay separate: `10-K` and `10-K/A` have different counts.
+
+In that same loop, it finds the greatest filing date whose form is exactly `10-K`. **That search is independent of the 12-month count window**, so a loaded older 10-K can still be returned. It does not substitute `20-F` or `10-K/A`.
+
+**5. Return summaries and errors**
+
+The response contains:
+
+- `from`, `to`, and `historyScope: "recent"`.
+- `companies`: each successful company’s ticker, CIK, name, `countsByForm`, and `latest10KDate`.
+- `errors`: ticker and message for each failed company.
+
+An empty successful history produces `countsByForm: {}` and `latest10KDate: null`. A failed fetch produces an error, **not zero counts**.
+
+**Trade-offs**
+
+- Companies load sequentially to keep request handling simple and avoid concurrent bursts. This is slower than parallel loading and is not a global SEC rate limiter.
+- A valid batch returns HTTP 200 with per-company errors, even if every company fails. Callers must inspect `errors`; malformed batch input returns 400.
+- **Existing recent-only limitation remains:** `latest10KDate: null` means no exact 10-K was found in the loaded recent history—not that the company has never filed one. Older archive fetching is not implemented.
+
+**Verified:** 26 tests, type checking, and production build pass. Tests use fixtures; live SEC behavior remains unverified. Prompt log updated.
+
+## 43. User — summary frontend
+
+Add a frontend to the endpoints aswell
+
+## 44. Assistant — progress
+
+I’ll add a summary section with a comma-separated ticker input, per-company form counts and latest 10-K dates, plus loading and error states. The existing filing browser will stay alongside it.
+
+## Summary frontend tool activity
+
+- Added client/SummaryView.tsx and rendered it below the existing filing browser.
+- Reused FilingsSummary and the existing /api development proxy; no backend changes.
+- Added client input validation, loading/request errors, per-company failure display, empty states, and explicit recent-history labels.
+- Added plain CSS for summary rows and wrapping form counts.
+- Production build/type checking and all 26 existing tests passed (121 assertions). No browser verification was attempted because localhost browser access was previously declined.
+- Updated README, NOTES, and prompt log.
+
+## 45. Assistant — result
+
+Added **Company summary** below the existing filing browser.
+
+Enter `AAPL, SPOT, JPM` and click **Get summary** to see:
+
+- Filing counts by form type for the displayed 12-month period.
+- Each company’s latest 10-K date found in recent history.
+- Loading, empty, and error states—including partial company failures.
+
+Build, type checking, and all 26 existing tests pass. Browser behavior remains unverified. Prompt log updated.
+
+## 46. User — frontend design
+
+use the [$frontend-design](/Users/bw/.agents/skills/frontend-design/SKILL.md) skill to improve my existing React frontend. Keep Typescript and plain css. Dont add new dependencies or change existing functionality
+
+## 47. Assistant — progress
+
+I’ll read the frontend-design skill and current UI, then improve the layout and styling while preserving the existing behavior, TypeScript, and plain CSS.
+
+## 48. Assistant — design direction
+
+I’m going with a restrained financial research workspace: white surfaces on a blue-gray canvas, dark navy text, a teal accent, and clearer separation between search controls and results. I’ll use local system fonts, improve table readability, and make the controls stack on mobile. Both workflows will remain visible on the same page.
+
+## 49. Assistant — progress
+
+The visual refresh is complete: search controls are grouped more clearly, tables have stronger headings and form badges, and the summary counts are easier to scan. Mobile styles stack the controls and keep wide tables horizontally scrollable.
+
+Type checking, the production build, and all 26 existing tests pass. Browser layout remains unverified because localhost browser access was previously declined.
+
+## Frontend design tool activity
+
+- Read the explicitly requested frontend-design SKILL.md and existing frontend files.
+- Design plan: canvas #edf2f6, surface #ffffff, ink #20354a, muted #53677b, accent #12695f, border #ced9e2. Local Avenir Next/Segoe UI/sans-serif typography, left-aligned workspace with grouped query controls and full-width results.
+- Reviewed direction against the task: avoided a marketing hero, decorative statistics, added tabs, remote fonts, and dependencies. Kept the document tables as the focus with quiet surrounding controls.
+- Updated presentation markup and CSS only; preserved request functions, state, submit behavior, pagination, and summary semantics. Added semantic headings and responsive layouts at 700px/380px; tables retain horizontal scrolling.
+- Self-review: table overflow is contained, labels/focus states retained, empty/error states explicit, no animation or network font dependency. No screenshot review because prior localhost browser permission was declined.
+- Type checking and production build passed; all 26 existing tests passed (121 assertions).
+
+## 50. Assistant — result
+
+Refreshed the frontend with clearer search sections, improved typography, readable tables, form badges, and better loading/empty/error styling. Controls stack on mobile, and wide tables scroll horizontally.
+
+Kept TypeScript, plain CSS, and existing functionality. No dependencies added.
+
+All 26 tests, type checking, and build pass. Visual browser verification remains pending. Prompt log updated.
+
