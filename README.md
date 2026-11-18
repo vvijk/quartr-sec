@@ -84,15 +84,15 @@ const company = await fetchCompanyFilings(cik);
 // Each filing: { accessionNumber, form, filingDate, documentUrl }
 ```
 
-Only `filings.recent` is loaded. Historical files in `filings.files` are not fetched. Future pagination totals must describe the loaded records, not the company's complete history. An absent recent 10-K does not prove no historical 10-K exists.
+Only `filings.recent` is loaded. Historical files in `filings.files` are not fetched. Pagination totals describe the filtered, loaded records, not the company's complete history. An absent recent 10-K does not prove no historical 10-K exists.
 
 The transformation validates the required parallel arrays and maps values at the same index into a filing. It preserves all forms and SEC ordering. Missing primary document filenames fall back to the complete submission `.txt` URL. Invalid columns or records raise SEC_UPSTREAM instead of producing partial results.
 
-Submission requests reuse the ticker request headers, 10-second timeout, and error handling. Submissions are not cached in this step. Filtering, sorting, pagination, and summary calculations remain unimplemented.
+Submission requests reuse the ticker request headers, 10-second timeout, and error handling. Submissions are not cached in this step. Filtering, sorting, and pagination are implemented in the route; summary calculations remain unimplemented.
 
 ## Filing browser
 
-Open http://localhost:5173 with both development servers running, enter a ticker such as AAPL, and click Search. The page shows company metadata and a table of forms, filing dates, accession numbers, and links to SEC documents. It includes initial, loading, error, and empty states. Only recent history is shown; this incremental version returns every loaded filing without pagination.
+Open http://localhost:5173 with both development servers running, enter a ticker such as AAPL, and click Search. The page shows company metadata and a table of forms, filing dates, accession numbers, and links to SEC documents. It includes initial, loading, error, and empty states. Only recent history is shown; the UI supports form filtering, date sorting, page size (10/20/50), and Previous/Next navigation. Click Search to apply edited criteria starting at page one. Navigation retains the last applied search, even if inputs have been edited. Any form type can be entered; the suggestions are not a restriction.
 
 `GET /companies/:ticker/filings` returns the existing CompanyFilings response. The frontend calls it through Vite at `/api/companies/:ticker/filings`. Invalid tickers return 400, unknown tickers 404, SEC failures 502, and server/configuration errors 500, with a JSON `error` message.
 
@@ -105,3 +105,14 @@ bun -e 'import { resolveCik } from "./server/sec"; import { fetchCompanyFilings 
 ```
 
 The agent's live check failed while loading SEC data; fixture tests, type checking, and production build passed.
+
+## Filing query parameters
+
+Example: `GET /companies/AAPL/filings?form=10-K&sort=DESC&page=2&limit=20`
+
+- `form`: optional; trimmed and uppercased, then matched exactly (`10-K` does not include `10-K/A`). Blank means all forms.
+- `sort`: `ASC` or `DESC` by filing date, default `DESC`. Accession number breaks date ties in the same direction.
+- `page`: positive integer, default `1`.
+- `limit`: positive integer, default `20`.
+
+The route filters and sorts before slicing and does not mutate the source array. The response keeps company metadata and `filings`, adding `page`, `limit`, `total`, and `totalPages`. `total` counts matching recent filings before pagination. No matches means `totalPages: 0`; out-of-range pages return an empty array with unchanged totals. Invalid sort or pagination values return 400 before SEC fetching.

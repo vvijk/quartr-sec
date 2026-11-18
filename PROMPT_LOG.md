@@ -389,3 +389,217 @@ With both dev servers running, open http://localhost:5173 and search for `AAPL`.
 
 **Verified:** 16 tests, type checking, and production build pass. Browser verification was blocked because localhost access was declined. Prompt log updated.
 
+## 29. User — filtering, sorting, and pagination
+
+Lets extend the "GET /companies/:ticker/filings" endpoint with filtering, sorting and pagination. Requirements:
+Optional form query parameter to filter by filing form type.
+Optional sort parameter ASC or DESC.
+page and limit parameters, default to page one and 20 filings per page.
+Filter and sort before pagination.
+
+Keep the implementation simple, reuse the existing SEC integration. And ofcourse avoid unnecessary abstractions.
+
+## 30. Assistant — progress
+
+I’ll add query validation and apply filtering, date sorting, then pagination to the existing filings response. I’ll default to newest first and include pagination metadata.
+
+## 31. Assistant — progress
+
+The endpoint now filters by exact form type, sorts by filing date with accession number as a tie-breaker, and then selects the page. Invalid query values return 400; pages beyond the results return an empty list.
+
+All 20 tests and the build pass. I also updated the UI’s count to say “Showing 20 of …” so it doesn’t imply the first page is the full result set. UI controls for filtering and pagination are still a separate step.
+
+## Pagination tool activity
+
+- Added query handling directly in the existing route, reusing its SEC loader.
+- Added PaginatedCompanyFilings response type and adapted the frontend count/type.
+- Added tests for defaults, filter-before-pagination, both sort directions, ties, page offsets, no matches, out-of-range pages, invalid queries, and source immutability.
+- Initial tests passed; type checking identified unknown JSON result types in new tests. Added explicit response types to those tests.
+- Final verification: 20 tests pass, 102 assertions; TypeScript checks pass. Production build passed after implementation changes.
+- Updated README and NOTES. No UI query controls or SEC integration changes.
+
+## 32. Assistant — result
+
+Implemented directly in the existing endpoint:
+
+`GET /companies/AAPL/filings?form=10-K&sort=DESC&page=2&limit=20`
+
+- Defaults: `sort=DESC`, `page=1`, `limit=20`.
+- Exact form filtering → date sorting → pagination.
+- Response includes `page`, `limit`, `total`, and `totalPages`.
+- Invalid parameters return 400; out-of-range pages return an empty list.
+
+The UI count now distinguishes displayed rows from total results; pagination controls are not added yet.
+
+**Verified:** 20 tests, type checking, and production build pass. Prompt log updated.
+
+## 33. User — client query controls
+
+add client side query controls
+
+## 34. Assistant — progress
+
+I’ll add form and sort controls plus Previous/Next buttons, wired to the existing API. Changing the search criteria will reset to page one.
+
+## Client controls tool activity
+
+- Read App.tsx and CSS, preserving the user's SubmitEvent type change.
+- Added free-text form input with optional suggestions, date sort dropdown, page-size dropdown, and Previous/Next buttons.
+- Search applies edited criteria from page one. Pagination uses the last applied query, preventing draft edits from changing the company/filter mid-pagination.
+- Query strings use URLSearchParams. Controls are disabled while loading; navigation is disabled at page boundaries. Empty results have no pagination controls.
+- Updated README and NOTES. Production build/type checking and all 20 existing tests pass. No browser check attempted because localhost browser access was previously declined.
+
+## 35. Assistant — result
+
+Added:
+
+- Form filter with suggestions and support for any form type.
+- Newest/oldest sort.
+- Page size: 10, 20, or 50.
+- Previous/Next buttons and page count.
+
+Click **Search** to apply changes from page one. Pagination keeps the last applied search.
+
+Build, type checking, and all 20 existing tests pass. Browser behavior remains unverified. Prompt log updated.
+
+## 36. User — pagination walkthrough
+
+walk me through the changes and the implementation of how the pagination works. Explain any trade offs you made
+
+## 37. Assistant — progress
+
+I’ll read the current client and endpoint code, then walk through how a page request works and the trade-offs in this implementation.
+
+## 38. Assistant — explanation
+
+**Pagination happens on our backend.** React requests a page, and the backend loads the company’s recent filings, filters and sorts them, then returns only the requested portion.
+
+The relevant files are [server/app.ts](sandbox:/Users/bw/programming/quartr/server/app.ts), [client/App.tsx](sandbox:/Users/bw/programming/quartr/client/App.tsx), and [shared/types.ts](sandbox:/Users/bw/programming/quartr/shared/types.ts).
+
+**1. Clicking Search starts at page one**
+
+The client holds the values currently in the controls:
+
+```ts
+ticker
+form
+sort
+limit
+```
+
+Submitting the form calls:
+
+```ts
+await loadFilings(
+  { ticker: ticker.trim().toUpperCase(), form: form.trim().toUpperCase(), sort, limit },
+  1
+);
+```
+
+That final `1` resets pagination. Otherwise, changing from a broad search on page 8 to a filter with only two pages could produce an empty result.
+
+Edits are applied **when you click Search**, not immediately when you change a control.
+
+**2. The client builds the request**
+
+`URLSearchParams` constructs and encodes the query string. For example:
+
+```text
+/api/companies/AAPL/filings?sort=DESC&page=2&limit=20&form=10-K
+```
+
+Vite removes the `/api` prefix and forwards it to the Elysia backend.
+
+**3. The backend reads and validates the parameters**
+
+```ts
+const sort = query.sort ?? "DESC";
+const page = Number(query.page ?? 1);
+const limit = Number(query.limit ?? 20);
+const offset = (page - 1) * limit;
+```
+
+Query values arrive as strings, so `Number()` converts page and limit. Missing values use the defaults.
+
+Invalid sort values, non-integer page sizes, zero, negative values, and unsafe numeric ranges return **400 before fetching SEC data**.
+
+**4. Filter → sort → paginate**
+
+First, the existing integration resolves the ticker and fetches the company’s filings.
+
+Filtering keeps exact form matches. For example, `10-K` does not also include `10-K/A`.
+
+Sorting compares the filing dates. Because our dates use `YYYY-MM-DD`, their string order matches chronological order. Accession number breaks ties when two filings have the same date.
+
+We sort a new array: `filter()` creates one, or `[...company.filings]` copies the unfiltered array. This matters because `sort()` mutates its array.
+
+Finally:
+
+```ts
+filings.slice(offset, offset + limit)
+```
+
+With 20 filings per page:
+
+| Page | Offset | Slice | Matching records |
+|---|---:|---|---|
+| 1 | 0 | `slice(0, 20)` | 1–20 |
+| 2 | 20 | `slice(20, 40)` | 21–40 |
+| 3 | 40 | `slice(40, 60)` | 41–60, if present |
+
+The end index is exclusive.
+
+**Why this order matters:** filtering after pagination could leave a page with only two matches while other matching filings remain elsewhere. Sorting after pagination would order each page separately instead of ordering the whole result set.
+
+**5. The response includes navigation information**
+
+For an illustrative search with 45 matches:
+
+```json
+{
+  "page": 2,
+  "limit": 20,
+  "total": 45,
+  "totalPages": 3,
+  "filings": ["20 filing objects"]
+}
+```
+
+Company metadata is also included. The calculation is:
+
+```ts
+totalPages: Math.ceil(filings.length / limit)
+```
+
+`total` counts **all matching recent filings before slicing**, not just this page and not the company’s complete historical filings.
+
+No matches means zero pages. Requesting a page beyond the results returns an empty array.
+
+**6. Previous/Next reuse the applied search**
+
+After a successful request, React saves:
+
+```ts
+setCompany(result);
+setAppliedQuery(query);
+```
+
+There are deliberately two kinds of state:
+
+- **Input state:** what you are currently editing.
+- **Applied query:** what produced the displayed results.
+
+Suppose you search AAPL, then type SPOT without clicking Search. Clicking Next still requests AAPL’s next page. Without `appliedQuery`, navigation could unexpectedly switch companies.
+
+Next calls `loadFilings(appliedQuery, company.page + 1)`; Previous subtracts one. Buttons are disabled at the first/last page, and controls are disabled during loading.
+
+**Trade-offs**
+
+- **Simple offset pagination:** easy to understand and appropriate for this assignment. If new filings arrive between requests, records can shift between pages. The tie-breaker gives consistent ordering for unchanged data, but does not freeze the dataset.
+- **Backend pagination, full upstream fetch:** we send only one page to React, but currently fetch and transform the recent SEC submissions again for each page request. Only the ticker map is cached. This keeps implementation small but adds latency and SEC traffic; a short-lived submissions cache would be a useful follow-up.
+- **Explicit Search button:** fewer requests and simpler state management, at the cost of requiring a click to apply filters.
+- **Clear results while loading:** avoids showing old results as if they belonged to the new query. The downside is that the table disappears during navigation, and a failed request removes the previous results.
+- **No API page-size cap yet:** the UI offers 10/20/50, but direct API callers can request larger valid limits. A server-side maximum would be sensible before public deployment.
+
+No application code was changed for this walkthrough.
+

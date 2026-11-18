@@ -1,33 +1,50 @@
 import { useState } from "react";
 import type { SubmitEvent } from "react";
-import type { CompanyFilings } from "../shared/types";
+import type { PaginatedCompanyFilings } from "../shared/types";
+
+interface FilingQuery {
+  ticker: string;
+  form: string;
+  sort: string;
+  limit: number;
+}
 
 export default function App() {
   const [ticker, setTicker] = useState("");
-  const [company, setCompany] = useState<CompanyFilings | null>(null);
+  const [form, setForm] = useState("");
+  const [sort, setSort] = useState("DESC");
+  const [limit, setLimit] = useState(20);
+  const [appliedQuery, setAppliedQuery] = useState<FilingQuery | null>(null);
+  const [company, setCompany] = useState<PaginatedCompanyFilings | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   async function search(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
+    await loadFilings({ ticker: ticker.trim().toUpperCase(), form: form.trim().toUpperCase(), sort, limit }, 1);
+  }
+
+  async function loadFilings(query: FilingQuery, page: number) {
     if (loading) return;
-    const query = ticker.trim().toUpperCase();
     setCompany(null);
     setError("");
-    if (!query) {
+    if (!query.ticker) {
       setError("Enter a company ticker.");
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/companies/${encodeURIComponent(query)}/filings`);
+      const params = new URLSearchParams({ sort: query.sort, page: String(page), limit: String(query.limit) });
+      if (query.form) params.set("form", query.form);
+      const response = await fetch(`/api/companies/${encodeURIComponent(query.ticker)}/filings?${params}`);
       if (!response.ok) {
         const body = await response.json().catch(() => null);
         throw new Error(typeof body?.error === "string" ? body.error : "Could not load filings. Please try again.");
       }
-      const result: CompanyFilings = await response.json();
+      const result: PaginatedCompanyFilings = await response.json();
       setCompany(result);
+      setAppliedQuery(query);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Could not load filings. Please try again.");
     } finally {
@@ -48,6 +65,31 @@ export default function App() {
             autoCapitalize="characters" spellCheck={false} required />
           <button type="submit" disabled={loading}>{loading ? "Searching…" : "Search"}</button>
         </div>
+        <div className="query-controls">
+          <div>
+            <label htmlFor="form-type">Form type</label>
+            <input id="form-type" value={form} onChange={(event) => setForm(event.target.value)}
+              placeholder="All forms" list="form-suggestions" disabled={loading} spellCheck={false} />
+            <datalist id="form-suggestions">
+              <option value="10-K" /><option value="10-Q" /><option value="8-K" />
+              <option value="20-F" /><option value="6-K" />
+            </datalist>
+          </div>
+          <div>
+            <label htmlFor="sort">Filing date</label>
+            <select id="sort" value={sort} onChange={(event) => setSort(event.target.value)} disabled={loading}>
+              <option value="DESC">Newest first</option>
+              <option value="ASC">Oldest first</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="page-size">Filings per page</label>
+            <select id="page-size" value={limit} onChange={(event) => setLimit(Number(event.target.value))} disabled={loading}>
+              <option value={10}>10</option><option value={20}>20</option><option value={50}>50</option>
+            </select>
+          </div>
+        </div>
+        <p className="scope-note">Leave form type blank for all forms, or enter any form type. Search applies your choices from page one.</p>
       </form>
 
       {loading && <p role="status">Loading filings…</p>}
@@ -57,9 +99,10 @@ export default function App() {
       {company && (
         <section aria-label="Company filings">
           <h2>{company.name}</h2>
-          <p>CIK: {company.cik} · {company.filings.length} recent filings</p>
+          <p>CIK: {company.cik} · Showing {company.filings.length} of {company.total} matching recent filings</p>
+          <p>Form: {appliedQuery?.form || "All"} · {appliedQuery?.sort === "ASC" ? "Oldest first" : "Newest first"}</p>
           <p className="scope-note">Showing filings from the SEC’s recent submissions data. Older history is not included.</p>
-          {company.filings.length === 0 ? <p role="status">No recent filings found for this company.</p> : (
+          {company.filings.length === 0 ? <p role="status">No recent filings match this search.</p> : (
             <div className="table-container">
               <table>
                 <caption className="sr-only">Recent filings for {company.name}</caption>
@@ -80,6 +123,15 @@ export default function App() {
                 ))}</tbody>
               </table>
             </div>
+          )}
+          {appliedQuery && company.totalPages > 0 && (
+            <nav className="pagination" aria-label="Filing pages">
+              <button type="button" disabled={loading || company.page <= 1}
+                onClick={() => loadFilings(appliedQuery, company.page - 1)}>Previous</button>
+              <span>Page {company.page} of {company.totalPages}</span>
+              <button type="button" disabled={loading || company.page >= company.totalPages}
+                onClick={() => loadFilings(appliedQuery, company.page + 1)}>Next</button>
+            </nav>
           )}
         </section>
       )}

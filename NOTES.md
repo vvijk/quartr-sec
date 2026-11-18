@@ -18,11 +18,13 @@
 - Concurrent ticker lookups share one request; failed downloads can be retried. No automatic retry loop.
 - SEC_USER_AGENT must contain the user's application name and contact email. Live SEC access has not been verified in this step.
 - Ticker lookup has no standalone HTTP endpoint; GET /companies/:ticker/filings now reuses it with fetchCompanyFilings.
-- Recent submission fetching, normalization, the filing route, and a minimal React filing browser are implemented. No filtering, sorting, pagination, or summary calculations yet.
+- Recent submission fetching, normalization, the filing route, and a minimal React filing browser are implemented. The route now supports filtering, sorting, and pagination. Summary calculations remain unimplemented.
 - Required columns must contain strings and have matching lengths. Invalid records fail the whole transformation rather than silently reducing totals.
 - Validation now uses plain character checks instead of regex. Accession numbers require digits after removing hyphens, without enforcing exact group lengths. Tickers use a basic allowed-character check; unmatched values are rejected by lookup. A small date helper keeps calendar validation out of the mapping logic. No non-null assertions are needed in the transformation.
 - Missing primary document filenames link to the complete submission text. Dates remain YYYY-MM-DD strings; form names and SEC ordering are preserved.
 - Submission responses are not cached yet. SEC HTTP headers, timeout, and error handling are shared with ticker fetching.
 - Attempted live end-to-end AAPL check failed while loading SEC data (SEC_UPSTREAM). Live behavior remains unverified.
 - Frontend includes ticker input, Search, filing table, SEC links, loading/error/empty states, and recent-history labeling. Search is disabled while loading to prevent overlapping requests.
-- Latest verification: 16 tests pass; type checking and production build pass. Browser access to localhost was declined, so no visual/end-to-end browser verification was completed.
+- Latest verification: 20 tests pass; type checking and production build pass. Browser access to localhost was declined, so no visual/end-to-end browser verification was completed.
+
+- Pagination defaults: page 1, limit 20, sort DESC. Form matching is exact after trimming and uppercasing. Filter and sort run before pagination; totals describe matching recent data. The frontend count now distinguishes displayed rows from total matches. Form, date sort, page size, and Previous/Next controls are implemented. Search applies edits from page one; navigation uses the last applied query.

@@ -11,3 +11,10 @@ export interface CompanyFilings {
   historyScope: "recent";
   filings: Filing[];
 }
+
+export interface PaginatedCompanyFilings extends CompanyFilings {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
